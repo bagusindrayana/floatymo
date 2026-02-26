@@ -1,6 +1,7 @@
 package com.potadev.floatymo.data.repository
 
 import com.potadev.floatymo.data.local.LocalStorage
+import com.potadev.floatymo.domain.model.ActiveOverlay
 import com.potadev.floatymo.domain.model.SavedGif
 import com.potadev.floatymo.domain.repository.GifRepository
 import kotlinx.coroutines.flow.Flow
@@ -25,7 +26,7 @@ class GifRepositoryImpl(
     }
 
     override suspend fun getGifById(id: Long): SavedGif? {
-        return localStorage.getAllGifsList().find { it.id == id }
+        return localStorage.getGifById(id)
     }
 
     override suspend fun saveGif(gif: SavedGif): Long {
@@ -38,5 +39,37 @@ class GifRepositoryImpl(
 
     override suspend fun setActiveGif(id: Long) {
         localStorage.setActiveGif(id)
+    }
+
+    override fun getActiveOverlays(): Flow<List<ActiveOverlay>> {
+        return localStorage.getActiveOverlays()
+    }
+
+    override fun getActiveOverlaysList(): List<ActiveOverlay> {
+        return localStorage.getActiveOverlaysList()
+    }
+
+    override fun getActiveOverlayById(id: String): ActiveOverlay? {
+        return localStorage.getActiveOverlayById(id)
+    }
+
+    override fun canAddMoreOverlays(): Boolean {
+        return localStorage.canAddMoreOverlays()
+    }
+
+    override suspend fun addActiveOverlay(overlay: ActiveOverlay): Boolean {
+        return localStorage.addActiveOverlay(overlay)
+    }
+
+    override suspend fun updateActiveOverlay(overlay: ActiveOverlay) {
+        localStorage.updateActiveOverlay(overlay)
+    }
+
+    override suspend fun removeActiveOverlay(id: String) {
+        localStorage.removeActiveOverlay(id)
+    }
+
+    override suspend fun clearAllActiveOverlays() {
+        localStorage.clearAllActiveOverlays()
     }
 }

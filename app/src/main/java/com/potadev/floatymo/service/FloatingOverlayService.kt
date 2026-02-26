@@ -6,7 +6,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import com.potadev.floatymo.MainActivity
 import android.graphics.PixelFormat
@@ -53,6 +52,8 @@ import coil.decode.ImageDecoderDecoder
 import coil.request.ImageRequest
 import com.potadev.floatymo.AppContainer
 import com.potadev.floatymo.R
+import com.potadev.floatymo.domain.model.ActiveOverlay
+import com.potadev.floatymo.domain.model.SavedGif
 import com.potadev.floatymo.domain.repository.GifRepository
 import com.potadev.floatymo.domain.repository.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -63,6 +64,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+data class OverlayInstance(
+    val id: String,
+    val view: View,
+    val params: WindowManager.LayoutParams,
+    val gifPath: String
+)
+
 class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     private lateinit var gifRepository: GifRepository
@@ -72,16 +80,9 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
     private lateinit var lifecycleRegistry: LifecycleRegistry
     private lateinit var savedStateRegistryController: SavedStateRegistryController
 
-    private var floatingView: View? = null
-    private var overlayParams: WindowManager.LayoutParams? = null
+    private val overlays = mutableMapOf<String, OverlayInstance>()
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var currentGifPath: String? = null
-    private var currentSize: Float = 1.0f
-    private var currentOpacity: Float = 1.0f
-    private var currentX: Int = -1
-    private var currentY: Int = -1
-    private var currentIsEditing: Boolean = false
 
     companion object {
         const val CHANNEL_ID = "floatymo_overlay_channel"
@@ -103,7 +104,6 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
         super.onCreate()
         isRunning = true
         
-        // Initialize repositories
         gifRepository = AppContainer.provideGifRepository()
         settingsRepository = AppContainer.provideSettingsRepository()
         
@@ -119,48 +119,37 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
 
         serviceScope.launch {
             combine(
-                gifRepository.getActiveGif(),
+                gifRepository.getActiveOverlays(),
+                gifRepository.getAllGifs(),
                 settingsRepository.getSettings()
-            ) { gif, settings ->
-                Triple(gif, settings, Unit)
-            }.collect { (gif, settings) ->
-                val gifPath = gif?.filePath
-                val size = settings.overlaySize
-                val opacity = settings.overlayOpacity
-                val x = settings.overlayX
-                val y = settings.overlayY
+            ) { overlaysList, gifs, settings ->
+                Triple(overlaysList, gifs, settings)
+            }.collect { (overlaysList, gifs, settings) ->
                 val isEditing = settings.isEditingPosition
 
-                // Handle visibility based on editing mode
                 if (isEditing) {
-                    // Hide overlay when editing position
-                    if (floatingView != null) {
-                        removeOverlay()
-                    }
+                    hideAllOverlays()
                 } else {
-                    // Show overlay when not editing - ALWAYS try to show if there's a GIF
-                    // Force recreate by passing different flag
-                    if (gifPath != null) {
-                        currentGifPath = gifPath
-                        currentSize = size
-                        currentOpacity = opacity
-                        currentX = x
-                        currentY = y
-                        currentIsEditing = isEditing
+                    syncOverlays(overlaysList, gifs)
+                }
+            }
+        }
+    }
 
-                        if (floatingView != null) {
-                            // Update existing overlay with click-through enabled
-                            updateOverlay(gifPath, size, opacity, x, y, clickThrough = true)
-                        } else {
-                            // Create new overlay with click-through enabled
-                            createOverlay(gifPath, size, opacity, x, y, clickThrough = true)
-                        }
-                    } else {
-                        // No GIF selected - hide overlay
-                        if (floatingView != null) {
-                            removeOverlay()
-                        }
-                    }
+    private fun syncOverlays(activeOverlays: List<ActiveOverlay>, gifs: List<SavedGif>) {
+        val currentIds = overlays.keys.toSet()
+        val newIds = activeOverlays.map { it.id }.toSet()
+
+        val toRemove = currentIds - newIds
+        toRemove.forEach { removeOverlay(it) }
+
+        activeOverlays.forEach { overlay ->
+            val gif = gifs.find { it.id == overlay.gifId }
+            if (gif != null) {
+                if (overlays.containsKey(overlay.id)) {
+                    updateOverlay(overlay, gif.filePath)
+                } else {
+                    createOverlay(overlay.id, gif.filePath, overlay.size, overlay.opacity, overlay.x, overlay.y)
                 }
             }
         }
@@ -177,7 +166,7 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
         isRunning = false
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         serviceScope.cancel()
-        removeOverlay()
+        removeAllOverlays()
         super.onDestroy()
     }
 
@@ -213,9 +202,16 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
             PendingIntent.FLAG_IMMUTABLE
         )
 
+        val overlayCount = overlays.size
+        val contentText = if (overlayCount == 0) {
+            "No overlays active"
+        } else {
+            "$overlayCount overlay${if (overlayCount > 1) "s" else ""} active"
+        }
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("FloatyMo Active")
-            .setContentText("Floating animation is running")
+            .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .addAction(R.drawable.ic_close, "Stop", stopIntent)
@@ -224,8 +220,8 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
     }
 
     @SuppressLint("ClickableViewAccessibility", "InflateParams")
-    private fun createOverlay(gifPath: String, size: Float, opacity: Float, x: Int = -1, y: Int = -1, clickThrough: Boolean = false) {
-        if (floatingView != null) return
+    private fun createOverlay(id: String, gifPath: String, size: Float, opacity: Float, x: Int = -1, y: Int = -1) {
+        if (overlays.containsKey(id)) return
 
         val screenWidth = windowManager.defaultDisplay.width
         val screenHeight = windowManager.defaultDisplay.height
@@ -233,22 +229,14 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
         val baseSize = 150.dp
         val sizeInPx = (baseSize.value * size * resources.displayMetrics.density).roundToInt()
 
-        // Use saved position or default to center
         val finalX = if (x >= 0) x else screenWidth / 2 - sizeInPx / 2
         val finalY = if (y >= 0) y else screenHeight / 2 - sizeInPx / 2
 
-        // Build flags - clickThrough determines if touches pass through to apps below
-        val flags = if (clickThrough) {
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE  // Allow clicks to pass through
-        } else {
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH  // Catch touches
-        }
+        val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
 
-        overlayParams = WindowManager.LayoutParams(
+        val params = WindowManager.LayoutParams(
             sizeInPx,
             sizeInPx,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -265,88 +253,12 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
             this.y = finalY
         }
 
-        floatingView = ComposeView(this).apply {
+        val view = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@FloatingOverlayService)
             setViewTreeSavedStateRegistryOwner(this@FloatingOverlayService)
 
             setContent {
-                FloatingGifContent(
-                    gifPath = gifPath,
-                    opacity = opacity,
-                    size = size
-                )
-            }
-        }
-
-        setupDragListener(floatingView!!)
-
-        try {
-            windowManager.addView(floatingView, overlayParams)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun updateOverlay(gifPath: String?, size: Float, opacity: Float, x: Int = -1, y: Int = -1, clickThrough: Boolean = false) {
-        if (floatingView == null || overlayParams == null) {
-            if (gifPath != null) {
-                createOverlay(gifPath, size, opacity, x, y, clickThrough)
-            }
-            return
-        }
-
-        if (gifPath == null) {
-            removeOverlay()
-            return
-        }
-
-        val oldSize = currentSize
-        val oldOpacity = currentOpacity
-        val oldX = currentX
-        val oldY = currentY
-
-        currentGifPath = gifPath
-        currentSize = size
-        currentOpacity = opacity
-        currentX = x
-        currentY = y
-        currentIsEditing = clickThrough
-
-        val screenWidth = windowManager.defaultDisplay.width
-        val screenHeight = windowManager.defaultDisplay.height
-        val sizeInPx = (150.dp.value * size * resources.displayMetrics.density).roundToInt()
-
-        val savedX = if (x >= 0) x else overlayParams?.x ?: (screenWidth / 2 - sizeInPx / 2)
-        val savedY = if (y >= 0) y else overlayParams?.y ?: (screenHeight / 2 - sizeInPx / 2)
-
-        val sizeChanged = oldSize != size
-        val positionChanged = x != oldX || y != oldY
-
-        if (!sizeChanged && !positionChanged) {
-            removeOverlay()
-            createOverlay(gifPath, size, opacity, savedX, savedY, clickThrough)
-        } else {
-            val flags = if (clickThrough) {
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-            } else {
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                        WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-            }
-
-            overlayParams?.let { params ->
-                params.width = sizeInPx
-                params.height = sizeInPx
-                params.x = savedX
-                params.y = savedY
-                params.flags = flags
-                windowManager.updateViewLayout(floatingView, params)
-            }
-
-            (floatingView as ComposeView).setContent {
-                key(gifPath, size, opacity) {
+                key(id, size, opacity) {
                     FloatingGifContent(
                         gifPath = gifPath,
                         opacity = opacity,
@@ -354,48 +266,114 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
                     )
                 }
             }
-            floatingView?.requestLayout()
+        }
+
+        setupDragListener(id, view, params)
+
+        try {
+            windowManager.addView(view, params)
+            overlays[id] = OverlayInstance(id, view, params, gifPath)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
-    private fun removeOverlay() {
-        floatingView?.let {
-            try {
-                windowManager.removeView(it)
-            } catch (e: Exception) {
-                e.printStackTrace()
+    private fun updateOverlay(overlay: ActiveOverlay, gifPath: String) {
+        val instance = overlays[overlay.id] ?: return
+
+        val screenWidth = windowManager.defaultDisplay.width
+        val screenHeight = windowManager.defaultDisplay.height
+        val sizeInPx = (150.dp.value * overlay.size * resources.displayMetrics.density).roundToInt()
+
+        val savedX = if (overlay.x >= 0) overlay.x else instance.params.x
+        val savedY = if (overlay.y >= 0) overlay.y else instance.params.y
+
+        instance.params.width = sizeInPx
+        instance.params.height = sizeInPx
+        instance.params.x = savedX
+        instance.params.y = savedY
+
+        try {
+            windowManager.updateViewLayout(instance.view, instance.params)
+
+            (instance.view as ComposeView).setContent {
+                key(overlay.id, overlay.size, overlay.opacity) {
+                    FloatingGifContent(
+                        gifPath = gifPath,
+                        opacity = overlay.opacity,
+                        size = overlay.size
+                    )
+                }
             }
-            floatingView = null
+            instance.view.requestLayout()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-        overlayParams = null
+    }
+
+    private fun removeOverlay(id: String) {
+        val instance = overlays[id] ?: return
+        try {
+            windowManager.removeView(instance.view)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        overlays.remove(id)
+    }
+
+    private fun removeAllOverlays() {
+        overlays.keys.toList().forEach { removeOverlay(it) }
+    }
+
+    private fun hideAllOverlays() {
+        overlays.keys.toList().forEach { removeOverlay(it) }
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun setupDragListener(view: View) {
+    private fun setupDragListener(id: String, view: View, params: WindowManager.LayoutParams) {
         var initialX = 0
         var initialY = 0
         var initialTouchX = 0f
         var initialTouchY = 0f
 
         view.setOnTouchListener { _, event ->
-            overlayParams?.let { params ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        initialX = params.x
-                        initialY = params.y
-                        initialTouchX = event.rawX
-                        initialTouchY = event.rawY
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        params.x = initialX + (event.rawX - initialTouchX).roundToInt()
-                        params.y = initialY + (event.rawY - initialTouchY).roundToInt()
-                        windowManager.updateViewLayout(view, params)
-                        true
-                    }
-                    else -> false
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initialX = params.x
+                    initialY = params.y
+                    initialTouchX = event.rawX
+                    initialTouchY = event.rawY
+                    true
                 }
-            } ?: false
+                MotionEvent.ACTION_MOVE -> {
+                    params.x = initialX + (event.rawX - initialTouchX).roundToInt()
+                    params.y = initialY + (event.rawY - initialTouchY).roundToInt()
+                    try {
+                        windowManager.updateViewLayout(view, params)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                    serviceScope.launch(Dispatchers.IO) {
+                        val overlay = gifRepository.getActiveOverlayById(id)
+                        overlay?.let {
+                            gifRepository.updateActiveOverlay(it.copy(x = params.x, y = params.y))
+                        }
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    fun updateOverlayPosition(id: String, x: Int, y: Int) {
+        val instance = overlays[id] ?: return
+        instance.params.x = x
+        instance.params.y = y
+        try {
+            windowManager.updateViewLayout(instance.view, instance.params)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }
@@ -406,9 +384,6 @@ fun FloatingGifContent(
     opacity: Float,
     size: Float
 ) {
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
-
     val context = LocalContext.current
     val imageLoader = remember {
         ImageLoader.Builder(context)
@@ -426,15 +401,7 @@ fun FloatingGifContent(
     val actualSize = (baseSize * size).dp
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    offsetX += dragAmount.x
-                    offsetY += dragAmount.y
-                }
-            },
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         AsyncImage(

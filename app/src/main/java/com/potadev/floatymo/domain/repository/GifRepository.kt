@@ -1,5 +1,6 @@
 package com.potadev.floatymo.domain.repository
 
+import com.potadev.floatymo.domain.model.ActiveOverlay
 import com.potadev.floatymo.domain.model.SavedGif
 import kotlinx.coroutines.flow.Flow
 
@@ -11,4 +12,13 @@ interface GifRepository {
     suspend fun saveGif(gif: SavedGif): Long
     suspend fun deleteGif(gif: SavedGif)
     suspend fun setActiveGif(id: Long)
+
+    fun getActiveOverlays(): Flow<List<ActiveOverlay>>
+    fun getActiveOverlaysList(): List<ActiveOverlay>
+    fun getActiveOverlayById(id: String): ActiveOverlay?
+    fun canAddMoreOverlays(): Boolean
+    suspend fun addActiveOverlay(overlay: ActiveOverlay): Boolean
+    suspend fun updateActiveOverlay(overlay: ActiveOverlay)
+    suspend fun removeActiveOverlay(id: String)
+    suspend fun clearAllActiveOverlays()
 }
