@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.potadev.floatymo.BuildConfig
 import com.potadev.floatymo.data.remote.GiphyApi
 import com.potadev.floatymo.data.remote.GiphyGif
 import com.potadev.floatymo.domain.model.GifSource
@@ -37,7 +38,7 @@ class SearchViewModel(
 ) : ViewModel() {
 
     companion object {
-        const val GIPHY_API_KEY = "YOUR_GIPHY_API_KEY"
+        private val GIPHY_API_KEY = BuildConfig.GIPHY_API_KEY
         private const val PAGE_SIZE = 25
     }
 
