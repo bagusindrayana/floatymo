@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -49,6 +50,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,12 +63,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -81,6 +86,7 @@ import com.potadev.floatymo.AppContainer
 import com.potadev.floatymo.domain.model.ActiveOverlay
 import com.potadev.floatymo.domain.model.SavedGif
 import com.potadev.floatymo.domain.repository.GifRepository
+import com.potadev.floatymo.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -100,7 +106,8 @@ data class PositionUiState(
 )
 
 class PositionViewModel(
-    private val gifRepository: GifRepository
+    private val gifRepository: GifRepository,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val _overlays = MutableStateFlow<List<ActiveOverlay>>(emptyList())
@@ -123,6 +130,13 @@ class PositionViewModel(
             showSettingsSheet = _showSettingsSheet.value,
             selectedOverlayId = _selectedOverlayId.value
         )
+    }
+
+    fun setEditing(editing: Boolean) {
+        viewModelScope.launch {
+            val current = settingsRepository.getSettingsSync()
+            settingsRepository.updateSettings(current.copy(isEditingPosition = editing))
+        }
     }
 
     fun loadGifs() {
@@ -163,6 +177,8 @@ class PositionViewModel(
 
     fun loadFromRepository() {
         viewModelScope.launch {
+            setEditing(true)
+
             val overlays = gifRepository.getActiveOverlays().first()
             val gifs = gifRepository.getAllGifs().first()
             _gifs.value = gifs.associateBy { it.id }
@@ -172,6 +188,10 @@ class PositionViewModel(
             }
             updateUiState()
         }
+    }
+
+    fun onExitScreen() {
+        setEditing(false)
     }
 
     fun initializeOverlays(selectedGifIds: Set<Long>, allGifs: List<SavedGif>) {
@@ -248,11 +268,12 @@ class PositionViewModel(
     }
 
     class Factory(
-        private val gifRepository: GifRepository
+        private val gifRepository: GifRepository,
+        private val settingsRepository: SettingsRepository
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return PositionViewModel(gifRepository) as T
+            return PositionViewModel(gifRepository, settingsRepository) as T
         }
     }
 }
@@ -266,15 +287,28 @@ fun PositionScreen(
 ) {
     val viewModel: PositionViewModel = remember {
         PositionViewModel.Factory(
-            AppContainer.provideGifRepository()
+            AppContainer.provideGifRepository(),
+            AppContainer.provideSettingsRepository()
         ).create(PositionViewModel::class.java)
     }
 
     val uiState by viewModel.uiState.collectAsState()
     val settingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val density = LocalDensity.current
+
+    var containerScreenX by remember { mutableStateOf(0f) }
+    var containerScreenY by remember { mutableStateOf(0f) }
+    var containerWidthPx by remember { mutableStateOf(0f) }
+    var containerHeightPx by remember { mutableStateOf(0f) }
 
     LaunchedEffect(Unit) {
         viewModel.loadFromRepository()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.onExitScreen()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -290,7 +324,10 @@ fun PositionScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onNavigateBack) {
+                IconButton(onClick = {
+                    viewModel.onExitScreen()
+                    onNavigateBack()
+                }) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                 }
 
@@ -313,6 +350,7 @@ fun PositionScreen(
                             text = { Text("Simpan") },
                             onClick = {
                                 viewModel.saveAll()
+                                viewModel.onExitScreen()
                                 viewModel.hideMenu()
                                 onSave()
                             },
@@ -333,6 +371,7 @@ fun PositionScreen(
                         DropdownMenuItem(
                             text = { Text("Kembali") },
                             onClick = {
+                                viewModel.onExitScreen()
                                 viewModel.hideMenu()
                                 onNavigateBack()
                             },
@@ -348,6 +387,13 @@ fun PositionScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    .onGloballyPositioned { coordinates ->
+                        val posInRoot = coordinates.positionInRoot()
+                        containerScreenX = posInRoot.x
+                        containerScreenY = posInRoot.y
+                        containerWidthPx = coordinates.size.width.toFloat()
+                        containerHeightPx = coordinates.size.height.toFloat()
+                    }
             ) {
                 if (uiState.overlays.isEmpty()) {
                     Box(
@@ -379,8 +425,10 @@ fun PositionScreen(
                                 DraggableOverlayItem(
                                     overlay = overlay,
                                     gif = gif,
-                                    containerWidth = maxWidth.value.toInt(),
-                                    containerHeight = maxHeight.value.toInt(),
+                                    containerWidthPx = containerWidthPx,
+                                    containerHeightPx = containerHeightPx,
+                                    containerScreenX = containerScreenX,
+                                    containerScreenY = containerScreenY,
                                     onPositionChange = { x, y ->
                                         viewModel.updateOverlayPosition(overlay.id, x, y)
                                     },
@@ -458,31 +506,53 @@ fun PositionScreen(
 fun DraggableOverlayItem(
     overlay: ActiveOverlay,
     gif: SavedGif,
-    containerWidth: Int,
-    containerHeight: Int,
+    containerWidthPx: Float,
+    containerHeightPx: Float,
+    containerScreenX: Float,
+    containerScreenY: Float,
     onPositionChange: (Int, Int) -> Unit,
     onLongPress: () -> Unit
 ) {
-    val overlaySize = (150 * overlay.size).toInt()
+    val density = LocalDensity.current.density
+    val overlaySizeDp = (150 * overlay.size).dp
+    val overlaySizePx = 150f * overlay.size * density
 
-    var offsetX by remember(overlay.id, overlay.x) {
-        mutableStateOf(if (overlay.x >= 0) overlay.x.toFloat() else (containerWidth / 4).toFloat())
+    // Konversi: service coordinate (absolute screen px) -> preview coordinate (relative to container)
+    val initialX = if (overlay.x != -1) {
+        overlay.x.toFloat() - containerScreenX
+    } else {
+        (containerWidthPx - overlaySizePx) / 2f
     }
-    var offsetY by remember(overlay.id, overlay.y) {
-        mutableStateOf(if (overlay.y >= 0) overlay.y.toFloat() else (containerHeight / 2).toFloat())
+    val initialY = if (overlay.y != -1) {
+        overlay.y.toFloat() - containerScreenY
+    } else {
+        (containerHeightPx - overlaySizePx) / 2f
+    }
+
+    var offsetX by remember(overlay.id) { mutableStateOf(initialX) }
+    var offsetY by remember(overlay.id) { mutableStateOf(initialY) }
+
+    // Sync saat overlay.size berubah dari settings sheet
+    LaunchedEffect(overlay.size, overlay.opacity) {
+        if (overlay.x != -1) {
+            offsetX = overlay.x.toFloat() - containerScreenX
+        }
+        if (overlay.y != -1) {
+            offsetY = overlay.y.toFloat() - containerScreenY
+        }
     }
 
     Box(
         modifier = Modifier
-            .graphicsLayer {
-                translationX = offsetX
-                translationY = offsetY
-            }
-            .size(overlaySize.dp)
+            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+            .size(overlaySizeDp)
             .pointerInput(overlay.id) {
                 detectDragGestures(
                     onDragEnd = {
-                        onPositionChange(offsetX.roundToInt(), offsetY.roundToInt())
+                        // Konversi kembali: preview coordinate -> service coordinate (absolute screen)
+                        val serviceX = (offsetX + containerScreenX).roundToInt()
+                        val serviceY = (offsetY + containerScreenY).roundToInt()
+                        onPositionChange(serviceX, serviceY)
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()

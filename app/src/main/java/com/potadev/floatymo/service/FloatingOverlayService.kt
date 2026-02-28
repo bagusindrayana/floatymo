@@ -229,8 +229,8 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
         val baseSize = 150.dp
         val sizeInPx = (baseSize.value * size * resources.displayMetrics.density).roundToInt()
 
-        val finalX = if (x >= 0) x else screenWidth / 2 - sizeInPx / 2
-        val finalY = if (y >= 0) y else screenHeight / 2 - sizeInPx / 2
+        val finalX = if (x != -1) x else screenWidth / 2 - sizeInPx / 2
+        val finalY = if (y != -1) y else screenHeight / 2 - sizeInPx / 2
 
         val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
@@ -285,8 +285,8 @@ class FloatingOverlayService : Service(), LifecycleOwner, SavedStateRegistryOwne
         val screenHeight = windowManager.defaultDisplay.height
         val sizeInPx = (150.dp.value * overlay.size * resources.displayMetrics.density).roundToInt()
 
-        val savedX = if (overlay.x >= 0) overlay.x else instance.params.x
-        val savedY = if (overlay.y >= 0) overlay.y else instance.params.y
+        val savedX = if (overlay.x != -1) overlay.x else instance.params.x
+        val savedY = if (overlay.y != -1) overlay.y else instance.params.y
 
         instance.params.width = sizeInPx
         instance.params.height = sizeInPx
