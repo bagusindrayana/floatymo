@@ -51,7 +51,14 @@ class GalleryViewModel(
         BundleGif("12", "Pet Sakura Sticker", "pet_sakura_sticker"),
         BundleGif("13", "Pet Silence Sticker", "pet_silence_sticker"),
         BundleGif("14", "Pet Week Sticker", "pet_week_sticker"),
-        BundleGif("15", "Red Button Girl Sticker", "red_button_girl_sticker")
+        BundleGif("15", "Red Button Girl Sticker", "red_button_girl_sticker"),
+        BundleGif("16", "Lunar 1", "dailyfina_lunar_1"),
+        BundleGif("17", "Lunar 2", "dailyfina_lunar_2"),
+        BundleGif("18", "Lantern", "lantern"),
+        BundleGif("19", "Sun", "sun"),
+        BundleGif("20", "Party Disc", "party_disc"),
+        BundleGif("21", "Queen Card", "queen"),
+        BundleGif("22", "Flame/Fire", "flame")
     )
 
     val uiState: StateFlow<GalleryUiState> = combine(
