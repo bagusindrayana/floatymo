@@ -9,9 +9,12 @@ import com.potadev.floatymo.domain.model.GifSource
 import com.potadev.floatymo.domain.model.SavedGif
 import com.potadev.floatymo.domain.repository.GifRepository
 import com.potadev.floatymo.domain.repository.SettingsRepository
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -30,11 +33,18 @@ data class GalleryUiState(
     val activeGifId: Long? = null
 )
 
+sealed class GalleryUiEvent {
+    data class ShowSnackbar(val message: String) : GalleryUiEvent()
+}
+
 class GalleryViewModel(
     private val gifRepository: GifRepository,
     private val settingsRepository: SettingsRepository,
     private val context: Context
 ) : ViewModel() {
+
+    private val _uiEvent = MutableSharedFlow<GalleryUiEvent>()
+    val uiEvent: SharedFlow<GalleryUiEvent> = _uiEvent.asSharedFlow()
 
     private val bundleGifs = listOf(
         BundleGif("1", "Bleach Anime Lion Sticker", "bleach_anime_lion_sticker"),
@@ -93,6 +103,7 @@ class GalleryViewModel(
                 )
                 val id = gifRepository.saveGif(savedGif)
                 gifRepository.setActiveGif(id)
+                _uiEvent.emit(GalleryUiEvent.ShowSnackbar("Added ${bundleGif.name} to My GIFs"))
             }
         }
     }
@@ -134,6 +145,7 @@ class GalleryViewModel(
                 val bytes = inputStream?.readBytes() ?: return@launch
 
                 if (bytes.size > maxSize) {
+                    _uiEvent.emit(GalleryUiEvent.ShowSnackbar("File too large (max 3MB)"))
                     return@launch
                 }
 
@@ -149,8 +161,10 @@ class GalleryViewModel(
                 )
                 val id = gifRepository.saveGif(savedGif)
                 gifRepository.setActiveGif(id)
+                _uiEvent.emit(GalleryUiEvent.ShowSnackbar("GIF imported successfully"))
             } catch (e: Exception) {
                 e.printStackTrace()
+                _uiEvent.emit(GalleryUiEvent.ShowSnackbar("Failed to import GIF"))
             }
         }
     }
