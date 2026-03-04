@@ -23,8 +23,8 @@ android {
         applicationId = "com.potadev.floatymo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -46,6 +46,8 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
+
+        freeCompilerArgs += "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi"
     }
     buildFeatures {
         compose = true
