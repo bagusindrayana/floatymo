@@ -23,6 +23,7 @@ class LocalStorage(context: Context) {
         private const val KEY_GIFS = "saved_gifs"
         private const val KEY_SETTINGS = "app_settings"
         private const val KEY_ACTIVE_OVERLAYS = "active_overlays"
+        private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
         private const val MAX_OVERLAYS = 5
     }
 
@@ -161,5 +162,14 @@ class LocalStorage(context: Context) {
         } catch (e: Exception) {
             AppSettings()
         }
+    }
+
+    // Onboarding Operations
+    fun isOnboardingCompleted(): Boolean {
+        return prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false)
+    }
+
+    fun setOnboardingCompleted(completed: Boolean) {
+        prefs.edit().putBoolean(KEY_ONBOARDING_COMPLETED, completed).apply()
     }
 }

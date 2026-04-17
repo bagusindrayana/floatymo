@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -27,8 +28,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -37,6 +40,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -48,6 +52,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -88,6 +93,14 @@ import com.potadev.floatymo.domain.model.ActiveOverlay
 import com.potadev.floatymo.domain.model.SavedGif
 import com.potadev.floatymo.domain.repository.GifRepository
 import com.potadev.floatymo.domain.repository.SettingsRepository
+import com.potadev.floatymo.ui.theme.CyanPrimary
+import com.potadev.floatymo.ui.theme.CyanSubtle
+import com.potadev.floatymo.ui.theme.DarkBg
+import com.potadev.floatymo.ui.theme.DarkCard
+import com.potadev.floatymo.ui.theme.DarkSurface
+import com.potadev.floatymo.ui.theme.StatusError
+import com.potadev.floatymo.ui.theme.TextMuted
+import com.potadev.floatymo.ui.theme.TextSecondary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -317,7 +330,7 @@ fun PositionScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface)
+                .background(DarkBg)
         ) {
             Row(
                 modifier = Modifier
@@ -330,18 +343,18 @@ fun PositionScreen(
                     viewModel.onExitScreen()
                     onNavigateBack()
                 }) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextSecondary)
                 }
 
                 Text(
                     text = "Posisi Overlay",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium
+                    style = MaterialTheme.typography.titleLarge,
+                    color = CyanPrimary
                 )
 
                 Box {
                     IconButton(onClick = { viewModel.toggleMenu() }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Menu")
+                        Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = TextSecondary)
                     }
 
                     DropdownMenu(
@@ -378,7 +391,7 @@ fun PositionScreen(
                                 onNavigateBack()
                             },
                             leadingIcon = {
-                                Icon(Icons.Default.ArrowBack, contentDescription = null)
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                             }
                         )
                     }
@@ -388,7 +401,7 @@ fun PositionScreen(
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    .background(DarkSurface.copy(alpha = 0.5f))
                     .onGloballyPositioned { coordinates ->
                         val posInRoot = coordinates.positionInRoot()
                         containerScreenX = posInRoot.x
@@ -397,6 +410,12 @@ fun PositionScreen(
                         containerHeightPx = coordinates.size.height.toFloat()
                     }
             ) {
+                // Use BoxWithConstraints dimensions directly (available immediately)
+                val bwcWidthPx = with(density) { maxWidth.toPx() }
+                val bwcHeightPx = with(density) { maxHeight.toPx() }
+                val effectiveWidth = if (containerWidthPx > 0f) containerWidthPx else bwcWidthPx
+                val effectiveHeight = if (containerHeightPx > 0f) containerHeightPx else bwcHeightPx
+
                 if (uiState.overlays.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -407,28 +426,28 @@ fun PositionScreen(
                         ) {
                             Text(
                                 text = "Belum ada overlay",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextSecondary
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = "Pilih GIF dari tombol kiri bawah",
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted
                             )
                         }
                     }
                 } else {
-                    uiState.overlays.forEach { overlay ->
+                    uiState.overlays.forEachIndexed { index, overlay ->
                         val gif = viewModel.getGifForOverlay(overlay.gifId)
                         if (gif != null) {
                             key(overlay.id, overlay.size, overlay.opacity) {
                                 DraggableOverlayItem(
                                     overlay = overlay,
                                     gif = gif,
-                                    containerWidthPx = containerWidthPx,
-                                    containerHeightPx = containerHeightPx,
+                                    overlayIndex = index,
+                                    containerWidthPx = effectiveWidth,
+                                    containerHeightPx = effectiveHeight,
                                     containerScreenX = containerScreenX,
                                     containerScreenY = containerScreenY,
                                     onPositionChange = { x, y ->
@@ -453,7 +472,9 @@ fun PositionScreen(
         ) {
             FloatingActionButton(
                 onClick = { viewModel.toggleSidebar() },
-                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                containerColor = CyanPrimary,
+                contentColor = DarkBg,
+                shape = CircleShape
             ) {
                 Icon(Icons.Default.List, contentDescription = "List")
             }
@@ -484,7 +505,9 @@ fun PositionScreen(
             val overlayId: String = selectedOverlay.id
             ModalBottomSheet(
                 onDismissRequest = { viewModel.hideSettingsSheet() },
-                sheetState = settingsSheetState
+                sheetState = settingsSheetState,
+                containerColor = DarkCard,
+                scrimColor = DarkBg.copy(alpha = 0.5f)
             ) {
                 key(overlayId, selectedOverlay.size, selectedOverlay.opacity) {
                     OverlaySettingsContent(
@@ -508,6 +531,7 @@ fun PositionScreen(
 fun DraggableOverlayItem(
     overlay: ActiveOverlay,
     gif: SavedGif,
+    overlayIndex: Int = 0,
     containerWidthPx: Float,
     containerHeightPx: Float,
     containerScreenX: Float,
@@ -519,39 +543,43 @@ fun DraggableOverlayItem(
     val overlaySizeDp = (150 * overlay.size).dp
     val overlaySizePx = 150f * overlay.size * density
 
-    // Konversi: service coordinate (absolute screen px) -> preview coordinate (relative to container)
-    val initialX = if (overlay.x != -1) {
-        overlay.x.toFloat() - containerScreenX
-    } else {
-        (containerWidthPx - overlaySizePx) / 2f
-    }
-    val initialY = if (overlay.y != -1) {
-        overlay.y.toFloat() - containerScreenY
-    } else {
-        (containerHeightPx - overlaySizePx) / 2f
+    // Stagger default positions so overlays don't stack
+    val staggerOffset = overlayIndex * (60f * density)
+
+    fun calculateX(): Float {
+        return if (overlay.x != -1) {
+            overlay.x.toFloat() - containerScreenX
+        } else {
+            ((containerWidthPx - overlaySizePx) / 2f) + staggerOffset
+        }
     }
 
-    var offsetX by remember(overlay.id) { mutableStateOf(initialX) }
-    var offsetY by remember(overlay.id) { mutableStateOf(initialY) }
+    fun calculateY(): Float {
+        return if (overlay.y != -1) {
+            overlay.y.toFloat() - containerScreenY
+        } else {
+            ((containerHeightPx - overlaySizePx) / 2f) + staggerOffset
+        }
+    }
 
-    // Sync saat overlay.size berubah dari settings sheet
-    LaunchedEffect(overlay.size, overlay.opacity) {
-        if (overlay.x != -1) {
-            offsetX = overlay.x.toFloat() - containerScreenX
-        }
-        if (overlay.y != -1) {
-            offsetY = overlay.y.toFloat() - containerScreenY
-        }
+    var offsetX by remember(overlay.id) { mutableStateOf(calculateX()) }
+    var offsetY by remember(overlay.id) { mutableStateOf(calculateY()) }
+
+    // Re-sync position when container dimensions or screen position change
+    LaunchedEffect(containerWidthPx, containerHeightPx, containerScreenX, containerScreenY, overlay.size, overlay.opacity) {
+        offsetX = calculateX()
+        offsetY = calculateY()
     }
 
     Box(
         modifier = Modifier
             .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
             .size(overlaySizeDp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(DarkCard.copy(alpha = 0.3f))
             .pointerInput(overlay.id) {
                 detectDragGestures(
                     onDragEnd = {
-                        // Konversi kembali: preview coordinate -> service coordinate (absolute screen)
                         val serviceX = (offsetX + containerScreenX).roundToInt()
                         val serviceY = (offsetY + containerScreenY).roundToInt()
                         onPositionChange(serviceX, serviceY)
@@ -595,9 +623,20 @@ fun GifPreviewContent(
             .build()
     }
 
+    // Handle both raw paths and URI strings
+    val imageData = remember(gifPath) {
+        if (gifPath.startsWith("content://") || gifPath.startsWith("file://")) {
+            Uri.parse(gifPath)
+        } else if (gifPath.startsWith("/")) {
+            Uri.parse("file://$gifPath")
+        } else {
+            Uri.parse(gifPath)
+        }
+    }
+
     AsyncImage(
         model = ImageRequest.Builder(context)
-            .data(Uri.parse(gifPath))
+            .data(imageData)
             .crossfade(true)
             .build(),
         imageLoader = imageLoader,
@@ -608,7 +647,7 @@ fun GifPreviewContent(
             .clip(RoundedCornerShape(8.dp))
             .border(
                 2.dp,
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                CyanPrimary.copy(alpha = 0.4f),
                 RoundedCornerShape(8.dp)
             )
     )
@@ -629,11 +668,12 @@ fun SidebarContent(
 
     Card(
         modifier = Modifier
-            .width(280.dp)
+            .width(260.dp)
             .fillMaxHeight()
             .padding(8.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = DarkSurface
         )
     ) {
         Column(
@@ -648,11 +688,11 @@ fun SidebarContent(
             ) {
                 Text(
                     text = "Pilih Overlay",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+                    style = MaterialTheme.typography.titleMedium,
+                    color = CyanPrimary
                 )
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
                 }
             }
 
@@ -669,8 +709,8 @@ fun SidebarContent(
                     ) {
                         Text(
                             text = "Pilih GIF dari halaman utama",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
                         )
                     }
                 } else {
@@ -712,9 +752,8 @@ fun SidebarContent(
                         item {
                             Text(
                                 text = "Tambah",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextMuted,
                                 modifier = Modifier.padding(vertical = 8.dp)
                             )
                         }
@@ -745,14 +784,14 @@ fun SidebarItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable {
-                if (isActive) onSettings() else onAdd()
-            },
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { if (isActive) onSettings() else onAdd() }
+            ),
+        shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isActive)
-                MaterialTheme.colorScheme.primaryContainer
-            else
-                MaterialTheme.colorScheme.surfaceVariant
+            containerColor = if (isActive) CyanSubtle else DarkCard
         )
     ) {
         Row(
@@ -770,8 +809,7 @@ fun SidebarItem(
 
             Text(
                 text = gif.name,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -785,7 +823,7 @@ fun SidebarItem(
                     Icon(
                         Icons.Default.Delete,
                         contentDescription = "Remove",
-                        tint = MaterialTheme.colorScheme.error,
+                        tint = StatusError,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -797,7 +835,7 @@ fun SidebarItem(
                     Icon(
                         Icons.Default.Check,
                         contentDescription = "Add",
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = CyanPrimary,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -825,9 +863,20 @@ fun GifThumbnail(
             .build()
     }
 
+    // Handle both raw paths and URI strings
+    val imageData = remember(gifPath) {
+        if (gifPath.startsWith("content://") || gifPath.startsWith("file://")) {
+            Uri.parse(gifPath)
+        } else if (gifPath.startsWith("/")) {
+            Uri.parse("file://$gifPath")
+        } else {
+            Uri.parse(gifPath)
+        }
+    }
+
     AsyncImage(
         model = ImageRequest.Builder(context)
-            .data(Uri.parse(gifPath))
+            .data(imageData)
             .crossfade(true)
             .build(),
         imageLoader = imageLoader,
@@ -835,12 +884,8 @@ fun GifThumbnail(
         contentScale = ContentScale.Fit,
         modifier = modifier
             .alpha(opacity)
-            .clip(RoundedCornerShape(4.dp))
-            .border(
-                1.dp,
-                MaterialTheme.colorScheme.outline,
-                RoundedCornerShape(4.dp)
-            )
+            .clip(RoundedCornerShape(6.dp))
+            .background(DarkCard, RoundedCornerShape(6.dp))
     )
 }
 
@@ -873,11 +918,11 @@ fun OverlaySettingsContent(
         ) {
             Text(
                 text = "Pengaturan Overlay",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.titleLarge,
+                color = CyanPrimary
             )
             IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, contentDescription = "Close")
+                Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
             }
         }
 
@@ -898,24 +943,32 @@ fun OverlaySettingsContent(
             Column {
                 Text(
                     text = gif.name,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium
+                    style = MaterialTheme.typography.titleSmall
                 )
                 Text(
-                    text = "Size: ${(sizeValue * 100).toInt()}% | Opacity: ${(opacityValue * 100).toInt()}%",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "${(sizeValue * 100).toInt()}% · α ${(opacityValue * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            text = "Size",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Size",
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                text = "${(sizeValue * 100).toInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = CyanPrimary
+            )
+        }
 
         Slider(
             value = sizeValue,
@@ -924,32 +977,30 @@ fun OverlaySettingsContent(
                 onSizeChange(it)
             },
             valueRange = 0.5f..2f,
-            steps = 5
+            steps = 5,
+            colors = SliderDefaults.colors(
+                thumbColor = CyanPrimary,
+                activeTrackColor = CyanPrimary,
+                inactiveTrackColor = DarkCard
+            )
         )
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "50%",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "Opacity",
+                style = MaterialTheme.typography.titleSmall
             )
             Text(
-                text = "200%",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "${(opacityValue * 100).toInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = CyanPrimary
             )
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Opacity",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium
-        )
 
         Slider(
             value = opacityValue,
@@ -958,37 +1009,27 @@ fun OverlaySettingsContent(
                 onOpacityChange(it)
             },
             valueRange = 0.3f..1f,
-            steps = 6
+            steps = 6,
+            colors = SliderDefaults.colors(
+                thumbColor = CyanPrimary,
+                activeTrackColor = CyanPrimary,
+                inactiveTrackColor = DarkCard
+            )
         )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "30%",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "100%",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         Button(
             onClick = onRemove,
-            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.error
+            colors = ButtonDefaults.buttonColors(
+                containerColor = StatusError
             ),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(10.dp)
         ) {
-            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Hapus Overlay")
+            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Hapus Overlay", style = MaterialTheme.typography.labelLarge)
         }
 
         Spacer(modifier = Modifier.height(32.dp))

@@ -20,4 +20,12 @@ class SettingsRepositoryImpl(
     override suspend fun updateSettings(settings: AppSettings) {
         localStorage.updateSettings(settings)
     }
+
+    override suspend fun isOnboardingCompleted(): Boolean {
+        return localStorage.isOnboardingCompleted()
+    }
+
+    override suspend fun setOnboardingCompleted(completed: Boolean) {
+        localStorage.setOnboardingCompleted(completed)
+    }
 }

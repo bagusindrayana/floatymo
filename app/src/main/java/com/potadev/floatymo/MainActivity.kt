@@ -13,13 +13,22 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.compose.rememberNavController
 import com.potadev.floatymo.service.FloatingOverlayService
-import com.potadev.floatymo.ui.navigation.FloatyMoNavHost
+import com.potadev.floatymo.ui.navigation.AppNavigation
 import com.potadev.floatymo.ui.theme.FloatyMoTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    private var isServiceRunning by mutableStateOf(false)
+    private var startDestination by mutableStateOf("overlay_management")
 
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -35,6 +44,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         requestNotificationPermission()
+        isServiceRunning = FloatingOverlayService.isRunning()
+
+        // Check onboarding status
+        lifecycleScope.launch {
+            val settingsRepository = AppContainer.provideSettingsRepository()
+            val isOnboardingCompleted = settingsRepository.isOnboardingCompleted()
+            startDestination = if (isOnboardingCompleted) "overlay_management" else "onboarding"
+        }
 
         setContent {
             FloatyMoTheme {
@@ -42,10 +59,28 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    FloatyMoNavHost(this)
+                    val navController = rememberNavController()
+                    AppNavigation(
+                        navController = navController,
+                        onToggleService = { enabled ->
+                            if (enabled) {
+                                startOverlayService()
+                            } else {
+                                stopOverlayService()
+                            }
+                            isServiceRunning = enabled
+                        },
+                        isServiceRunning = isServiceRunning,
+                        startDestination = startDestination
+                    )
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isServiceRunning = FloatingOverlayService.isRunning()
     }
 
     fun checkOverlayPermission(): Boolean {

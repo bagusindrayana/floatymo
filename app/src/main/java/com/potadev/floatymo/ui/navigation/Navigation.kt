@@ -1,83 +1,98 @@
 package com.potadev.floatymo.ui.navigation
 
-import android.content.Context
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.potadev.floatymo.MainActivity
-import com.potadev.floatymo.service.FloatingOverlayService
 import com.potadev.floatymo.ui.screens.gallery.GalleryScreen
-import com.potadev.floatymo.ui.screens.home.HomeScreen
+import com.potadev.floatymo.ui.screens.onboarding.OnboardingScreen
+import com.potadev.floatymo.ui.screens.overlay.OverlayManagementScreen
 import com.potadev.floatymo.ui.screens.position.PositionScreen
 import com.potadev.floatymo.ui.screens.search.SearchScreen
 
-sealed class Screen(val route: String) {
-    data object Home : Screen("home")
-    data object Gallery : Screen("gallery")
-    data object Search : Screen("search")
-    data object Position : Screen("position")
-}
+private const val TRANSITION_DURATION = 300
 
 @Composable
-fun FloatyMoNavHost(
-    context: Context
+fun AppNavigation(
+    navController: NavHostController,
+    onToggleService: (Boolean) -> Unit,
+    isServiceRunning: Boolean,
+    startDestination: String = "overlay_management"
 ) {
-    val navController = rememberNavController()
-    val mainActivity = context as? MainActivity
-
-    var selectedGifIds by remember { mutableStateOf(setOf<Long>()) }
-    var isServiceRunning by remember { mutableStateOf(FloatingOverlayService.isRunning()) }
-
     NavHost(
         navController = navController,
-        startDestination = Screen.Home.route
+        startDestination = startDestination,
+        enterTransition = {
+            slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = tween(TRANSITION_DURATION)
+            ) + fadeIn(tween(TRANSITION_DURATION))
+        },
+        exitTransition = {
+            slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.Left,
+                animationSpec = tween(TRANSITION_DURATION)
+            ) + fadeOut(tween(TRANSITION_DURATION))
+        },
+        popEnterTransition = {
+            slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tween(TRANSITION_DURATION)
+            ) + fadeIn(tween(TRANSITION_DURATION))
+        },
+        popExitTransition = {
+            slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.Right,
+                animationSpec = tween(TRANSITION_DURATION)
+            ) + fadeOut(tween(TRANSITION_DURATION))
+        }
     ) {
-        composable(Screen.Home.route) {
-            if (mainActivity != null) {
-                HomeScreen(
-                    onNavigateToGallery = { navController.navigate(Screen.Gallery.route) },
-                    onNavigateToSearch = { navController.navigate(Screen.Search.route) },
-                    onNavigateToSettings = {
-                        navController.navigate(Screen.Position.route)
-                    },
-                    onToggleService = { enabled ->
-                        if (enabled) {
-                            mainActivity.startOverlayService()
-                        } else {
-                            mainActivity.stopOverlayService()
-                        }
-                        isServiceRunning = enabled
-                    },
-                    isServiceRunning = isServiceRunning
-                )
-            }
+        composable("onboarding") {
+            OnboardingScreen(
+                onOnboardingComplete = {
+                    navController.navigate("overlay_management") {
+                        popUpTo("onboarding") { inclusive = true }
+                    }
+                },
+                onSkip = {
+                    navController.navigate("overlay_management") {
+                        popUpTo("onboarding") { inclusive = true }
+                    }
+                }
+            )
         }
 
-        composable(Screen.Gallery.route) {
+        composable("overlay_management") {
+            OverlayManagementScreen(
+                onNavigateToGallery = { navController.navigate("gallery") },
+                onNavigateToSearch = { navController.navigate("search") },
+                onNavigateToPosition = { navController.navigate("position") },
+                onToggleService = onToggleService,
+                isServiceRunning = isServiceRunning
+            )
+        }
+
+        composable("gallery") {
             GalleryScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.Search.route) {
+        composable("search") {
             SearchScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }
 
-        composable(Screen.Position.route) {
+        composable("position") {
             PositionScreen(
-                selectedGifIds = selectedGifIds,
+                selectedGifIds = emptySet(),
                 onNavigateBack = { navController.popBackStack() },
-                onSave = {
-                    navController.popBackStack()
-                }
+                onSave = { navController.popBackStack() }
             )
         }
     }

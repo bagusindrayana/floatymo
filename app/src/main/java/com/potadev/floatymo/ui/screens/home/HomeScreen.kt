@@ -1,12 +1,20 @@
 package com.potadev.floatymo.ui.screens.home
 
 import android.net.Uri
-import androidx.compose.foundation.border
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,22 +24,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,23 +46,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.ImageLoader
-import coil.compose.AsyncImage
-import coil.decode.GifDecoder
-import coil.decode.ImageDecoderDecoder
-import coil.request.ImageRequest
 import com.potadev.floatymo.AppContainer
+import com.potadev.floatymo.domain.model.GifSource
 import com.potadev.floatymo.domain.model.SavedGif
+import com.potadev.floatymo.ui.components.AnimatedGifThumbnail
+import com.potadev.floatymo.ui.components.FadeInItem
+import com.potadev.floatymo.ui.components.GlassCard
+import com.potadev.floatymo.ui.components.PulsingDot
+import com.potadev.floatymo.ui.theme.CyanPrimary
+import com.potadev.floatymo.ui.theme.CyanSubtle
+import com.potadev.floatymo.ui.theme.StatusActive
+import com.potadev.floatymo.ui.theme.TextMuted
+import com.potadev.floatymo.ui.theme.TextSecondary
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onNavigateToGallery: () -> Unit,
@@ -81,25 +86,43 @@ fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(12.dp)
     ) {
-        Text(
-            text = "FloatyMo",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
+        // Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "FloatyMo",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = CyanPrimary
+                )
+                Text(
+                    text = "Pilih GIF untuk overlay",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                IconButton(onClick = onNavigateToGallery) {
+                    Icon(Icons.Default.Add, "Gallery", tint = TextSecondary)
+                }
+                IconButton(onClick = onNavigateToSearch) {
+                    Icon(Icons.Default.Search, "Search", tint = TextSecondary)
+                }
+                IconButton(onClick = onNavigateToSettings) {
+                    Icon(Icons.Default.Settings, "Settings", tint = TextSecondary)
+                }
+            }
+        }
 
-        Text(
-            text = "Pilih GIF untuk overlay",
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Spacer(modifier = Modifier.height(16.dp))
-
+        // GIF List
         if (uiState.gifs.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -110,97 +133,81 @@ fun HomeScreen(
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = "Belum ada GIF",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = TextMuted
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Tambah GIF dari Bundled atau Search",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Belum ada GIF",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = "Tambah dari Bundled atau Search",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
                     )
                 }
             }
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(uiState.gifs) { gif ->
-                    GifListItem(
-                        gif = gif,
-                        isSelected = uiState.selectedGifIds.contains(gif.id),
-                        onToggle = { viewModel.toggleGifSelection(gif.id) }
-                    )
+                itemsIndexed(uiState.gifs) { index, gif ->
+                    FadeInItem(index = index) {
+                        GifListItem(
+                            gif = gif,
+                            isSelected = uiState.selectedGifIds.contains(gif.id),
+                            onToggle = { viewModel.toggleGifSelection(gif.id) }
+                        )
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        Row(
+        // Service Toggle
+        GlassCard(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                onClick = onNavigateToGallery,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Bundled")
-            }
-
-            OutlinedButton(
-                onClick = onNavigateToSearch,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Search")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        androidx.compose.material3.Button(
-            onClick = onNavigateToSettings,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Pengaturan Overlay")
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+            cornerRadius = 14.dp
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        text = if (uiState.isServiceRunning) "Overlay Aktif" else "Overlay Nonaktif",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = if (uiState.isServiceRunning)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "${uiState.selectedGifIds.size}/5 overlay",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (uiState.isServiceRunning) {
+                        PulsingDot(size = 8.dp)
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(TextMuted, CircleShape)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = if (uiState.isServiceRunning) "Overlay Aktif" else "Overlay Nonaktif",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (uiState.isServiceRunning) StatusActive else TextSecondary
+                        )
+                        Text(
+                            text = "${uiState.selectedGifIds.size}/5 overlay",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    }
                 }
 
                 Switch(
@@ -208,7 +215,13 @@ fun HomeScreen(
                     onCheckedChange = { enabled ->
                         onToggleService(enabled)
                         viewModel.setServiceRunning(enabled)
-                    }
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = CyanPrimary,
+                        checkedTrackColor = CyanSubtle,
+                        uncheckedThumbColor = TextSecondary,
+                        uncheckedTrackColor = TextMuted.copy(alpha = 0.3f)
+                    )
                 )
             }
         }
@@ -221,106 +234,84 @@ fun GifListItem(
     isSelected: Boolean,
     onToggle: () -> Unit
 ) {
-    Card(
+    val bgColor by animateColorAsState(
+        targetValue = if (isSelected) CyanSubtle else MaterialTheme.colorScheme.surfaceVariant,
+        animationSpec = tween(300),
+        label = "bgColor"
+    )
+    val selectScale by animateFloatAsState(
+        targetValue = if (isSelected) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "selectScale"
+    )
+
+    GlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected)
-                MaterialTheme.colorScheme.primaryContainer
-            else
-                MaterialTheme.colorScheme.surfaceVariant
-        )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onToggle
+            ),
+        cornerRadius = 12.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .background(bgColor)
+                .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            GifThumbnail(
+            AnimatedGifThumbnail(
                 gifPath = gif.filePath,
-                modifier = Modifier.size(50.dp)
+                modifier = Modifier.size(44.dp),
+                cornerRadius = 8.dp
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = gif.name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = when (gif.source) {
-                        com.potadev.floatymo.domain.model.GifSource.BUNDLE -> "Bundled"
-                        com.potadev.floatymo.domain.model.GifSource.GIPHY -> "GIPHY"
-                        com.potadev.floatymo.domain.model.GifSource.USER -> "User"
+                        GifSource.BUNDLE -> "Bundled"
+                        GifSource.GIPHY -> "GIPHY"
+                        GifSource.USER -> "Imported"
                     },
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
                 )
             }
 
+            // Animated check circle
             Box(
                 modifier = Modifier
-                    .size(24.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .border(
-                        2.dp,
-                        if (isSelected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.outline,
-                        RoundedCornerShape(4.dp)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isSelected) CyanPrimary else TextMuted.copy(alpha = 0.3f),
+                        CircleShape
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                if (isSelected) {
-                    Icon(
-                        Icons.Default.Check,
-                        contentDescription = "Selected",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                    else TextMuted,
+                    modifier = Modifier
+                        .size(14.dp)
+                        .scale(selectScale)
+                )
             }
         }
     }
-}
-
-@Composable
-fun GifThumbnail(
-    gifPath: String,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    val imageLoader = remember {
-        ImageLoader.Builder(context)
-            .components {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                    add(ImageDecoderDecoder.Factory())
-                } else {
-                    add(GifDecoder.Factory())
-                }
-            }
-            .build()
-    }
-
-    AsyncImage(
-        model = ImageRequest.Builder(context)
-            .data(Uri.parse(gifPath))
-            .crossfade(true)
-            .build(),
-        imageLoader = imageLoader,
-        contentDescription = "GIF thumbnail",
-        contentScale = ContentScale.Fit,
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .border(
-                1.dp,
-                MaterialTheme.colorScheme.outline,
-                RoundedCornerShape(8.dp)
-            )
-    )
 }

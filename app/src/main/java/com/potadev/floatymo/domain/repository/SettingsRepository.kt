@@ -7,4 +7,6 @@ interface SettingsRepository {
     fun getSettings(): Flow<AppSettings>
     suspend fun getSettingsSync(): AppSettings
     suspend fun updateSettings(settings: AppSettings)
+    suspend fun isOnboardingCompleted(): Boolean
+    suspend fun setOnboardingCompleted(completed: Boolean)
 }
